@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>전기의 이용 탐험 게임 (심화 학습편)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            touch-action: manipulation;
+        }
+        .game-bg {
+            background: linear-gradient(to bottom, #4A5568, #E2E8F0); /* 어두운 회색에서 밝은 회색으로 */
+            transition: background 1s ease;
+        }
+        .game-card, .form-card, .results-card {
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            background-color: rgba(255, 255, 255, 0.9);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        .option-btn { transition: all 0.3s ease; }
+        .option-btn:hover { transform: translateY(-3px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+        .option-btn.correct { background-color: #2ecc71; color: white; transform: scale(1.05); }
+        .option-btn.incorrect { background-color: #e74c3c; color: white; }
+        .option-btn:disabled { opacity: 0.7; cursor: not-allowed; }
+        .achievement-badge {
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            border-radius: 9999px;
+            font-weight: 700;
+            color: white;
+            transition: all 0.3s ease;
+        }
+        .badge-earned { background-color: #f39c12; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .badge-not-earned { background-color: #bdc3c7; }
+        #tip-modal {
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+    </style>
+</head>
+<body class="game-bg">
+
+    <!-- 시작 화면 -->
+    <div id="start-screen" class="min-h-screen w-full flex items-center justify-center p-4">
+        <div class="form-card w-full max-w-md rounded-2xl p-8 shadow-lg text-center">
+            <h1 class="text-3xl font-bold text-gray-800 mb-2">전기의 이용 탐험</h1>
+            <p class="text-gray-600 mb-6">성취기준을 확인하며 전기의 원리를 배워보세요!</p>
+            <button id="start-game-btn" class="w-full bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-indigo-700 transition-transform duration-200 hover:scale-105">
+                탐험 시작하기
+            </button>
+        </div>
+    </div>
+
+    <!-- 게임 화면 -->
+    <div id="game-screen" class="hidden min-h-screen w-full flex items-center justify-center p-4 relative">
+        <div class="game-card w-full max-w-3xl rounded-2xl p-6 md:p-8 shadow-lg text-center">
+            <div class="flex justify-between items-center mb-4">
+                <div class="flex gap-3">
+                    <span class="text-3xl cursor-pointer" onclick="showElectricityInfo('circuit')">💡</span>
+                    <span class="text-3xl cursor-pointer" onclick="showElectricityInfo('connection')">🔗</span>
+                    <span class="text-3xl cursor-pointer" onclick="showElectricityInfo('electromagnet')">🧲</span>
+                    <span class="text-3xl cursor-pointer" onclick="showElectricityInfo('safety')">🔌</span>
+                </div>
+                <div id="progress" class="font-bold text-gray-700"></div>
+                <div id="main-icon" class="text-5xl cursor-pointer transition-transform duration-300 hover:scale-110" onclick="showTip()">⚡️</div>
+            </div>
+            
+            <p id="achievement-standard" class="text-sm font-bold text-indigo-600 mb-2"></p>
+            <h2 id="question" class="text-xl md:text-2xl font-bold text-gray-800 mb-6 min-h-[6rem] flex items-center justify-center"></h2>
+            <div id="options-container" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+            <p id="explanation" class="mt-4 text-gray-700 bg-indigo-100 p-3 rounded-lg min-h-[5rem] flex items-center justify-center"></p>
+            <button id="next-btn" class="hidden mt-6 w-full bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-indigo-700">다음 문제</button>
+        </div>
+        <!-- 팁 모달 -->
+        <div id="tip-modal" class="hidden absolute top-0 left-0 w-full h-full bg-black bg-opacity-50 flex items-center justify-center p-4 opacity-0 -translate-y-4">
+            <div class="bg-white p-6 rounded-lg shadow-xl max-w-md text-center">
+                <h3 class="text-xl font-bold mb-2">핵심 팁! 💡</h3>
+                <p id="tip-content"></p>
+                <button onclick="closeTip()" class="mt-4 bg-gray-300 px-4 py-2 rounded-lg">닫기</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 결과 화면 -->
+    <div id="results-screen" class="hidden min-h-screen w-full flex items-center justify-center p-4">
+        <div class="results-card w-full max-w-2xl rounded-2xl p-8 shadow-lg text-center">
+            <h1 class="text-3xl font-bold text-gray-800 mb-2">탐험 결과 보고서</h1>
+            <div id="achievements-container" class="space-y-4 my-6"></div>
+            <p id="result-message" class="font-bold text-xl my-4"></p>
+            <button id="restart-btn" class="w-full bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-indigo-700">처음부터 다시하기</button>
+        </div>
+    </div>
+
+    <script>
+        // --- 1. 질문 데이터베이스 (성취기준별 구성) ---
+        const allQuestions = [
+            // [6과06-01] 전기 회로 구성 및 스위치 기능 (4문제)
+            { standard: "6-06-01", question: "전구에 불이 켜지게 하려면 반드시 필요한 것은 무엇인가요?", options: ["전지, 전선, 스위치", "전구, 자석, 스위치", "전지, 전선, 전구", "전구, 전선, 자석"], answer: 2, explanation: "전구에 불이 켜지려면 전기를 공급하는 '전지', 전기가 흐르는 길인 '전선', 빛을 내는 '전구'가 끊김 없이 연결된 '전기 회로'가 만들어져야 합니다." },
+            { standard: "6-06-01", question: "전기 회로에서 스위치의 역할로 가장 올바른 것은 무엇인가요?", options: ["전기를 더 강하게 만든다", "전기가 흐르는 길을 연결하거나 끊는다", "전기의 방향을 바꾼다", "전기를 만들어낸다"], answer: 1, explanation: "스위치는 전기 회로를 연결하여 전기를 흐르게 하거나(닫힌 회로), 끊어서 흐르지 않게(열린 회로) 하는 역할을 합니다." },
+            { standard: "6-06-01", question: "다음 중 전기가 잘 통하지 않는 '절연체'는 무엇인가요?", options: ["구리선", "알루미늄 캔", "고무장갑", "못"], answer: 2, explanation: "구리, 알루미늄, 못과 같은 금속은 전기가 잘 통하는 '도체'이고, 고무, 플라스틱, 유리 등은 전기가 잘 통하지 않는 '절연체'입니다." },
+            { standard: "6-06-01", question: "전지와 전구를 전선으로 연결했는데 불이 켜지지 않았습니다. 그 이유가 될 수 없는 것은 무엇인가요?", options: ["전지가 모두 닳았을 때", "전선의 중간이 끊어졌을 때", "전지의 (+)극과 (+)극을 연결했을 때", "전구의 필라멘트가 끊어졌을 때"], answer: 2, explanation: "전지의 (+)극과 (+)극끼리 연결하면 전류가 흐르지 않아 불이 켜지지 않습니다. 전지가 닳거나, 전선/필라멘트가 끊어져도 회로가 완성되지 않아 불이 켜지지 않습니다." },
+
+            // [6과06-02] 전지의 직렬연결과 병렬연결 비교 (5문제)
+            { standard: "6-06-02", question: "전지 2개를 직렬연결했을 때 전구의 밝기는 1개일 때와 비교하여 어떻게 변하나요?", options: ["더 밝아진다", "더 어두워진다", "밝기가 같다", "불이 켜지지 않는다"], answer: 0, explanation: "전지를 직렬연결하면 전압이 높아져 더 강한 전류가 흐르므로 전구가 더 밝아집니다. 하지만 전지는 더 빨리 닳습니다." },
+            { standard: "6-06-02", question: "전지 2개를 병렬연결했을 때의 가장 큰 장점은 무엇인가요?", options: ["전구가 훨씬 더 밝아진다", "전지를 더 오래 사용할 수 있다", "회로를 간단하게 만들 수 있다", "더 많은 전구를 연결할 수 있다"], answer: 1, explanation: "전지를 병렬연결하면 전압은 1개일 때와 같아 전구 밝기는 비슷하지만, 전지를 더 오래 사용할 수 있다는 장점이 있습니다." },
+            { standard: "6-06-02", question: "가정에서 사용하는 전기 기구들은 대부분 어떤 방식으로 연결되어 있을까요?", options: ["직렬연결", "병렬연결", "혼합연결", "연결 방식이 정해져 있지 않다"], answer: 1, explanation: "가정의 전기 기구들은 병렬연결되어 있어 각각의 스위치로 켜고 끌 수 있으며, 정해진 전압(220V)을 동일하게 공급받습니다." },
+            { standard: "6-06-02", question: "직렬연결된 두 개의 전구 중 하나가 끊어지면 어떻게 될까요?", options: ["나머지 하나는 계속 켜져 있다", "나머지 하나도 꺼진다", "나머지 하나는 더 밝아진다", "아무 변화 없다"], answer: 1, explanation: "직렬연결은 전기가 흐르는 길이 하나이므로, 중간에 한 전구가 끊어지면 전체 회로가 끊어져 나머지 전구도 불이 꺼집니다." },
+            { standard: "6-06-02", question: "손전등의 전구 밝기를 더 밝게 만들고 싶을 때 가장 효과적인 방법은 무엇일까요?", options: ["전지를 병렬로 추가한다", "전지를 직렬로 추가한다", "더 긴 전선을 사용한다", "스위치를 더 큰 것으로 바꾼다"], answer: 1, explanation: "전지를 직렬로 추가하면 전체 전압이 높아져 전구가 더 밝아집니다. 병렬연결은 밝기에 큰 영향을 주지 않습니다." },
+
+            // [6과06-03] 전자석의 성질과 이용 (5문제)
+            { standard: "6-06-03", question: "전자석을 더 강하게 만드는 방법으로 옳지 않은 것은 무엇인가요?", options: ["전지에 흐르는 전류를 세게 한다", "코일을 더 많이 감는다", "코일 안에 철심을 넣는다", "코일을 더 굵은 것으로 바꾼다"], answer: 3, explanation: "전자석의 세기는 전류의 세기, 코일의 감은 수에 비례합니다. 코일의 굵기는 직접적인 영향을 주지 않습니다. 철심은 자성을 강화하는 역할을 합니다." },
+            { standard: "6-06-03", question: "전자석이 일반 자석과 다른 가장 큰 특징은 무엇인가요?", options: ["항상 쇠붙이를 끌어당긴다", "N극과 S극이 없다", "전류가 흐를 때만 자석이 된다", "플라스틱도 끌어당길 수 있다"], answer: 2, explanation: "전자석은 전기를 공급할 때만 자석의 성질을 띠고, 전기를 끊으면 자석의 성질이 사라진다는 점이 일반 자석과의 가장 큰 차이점입니다." },
+            { standard: "6-06-03", question: "전자석에 연결된 전지의 (+)극과 (-)극을 바꾸면 어떻게 될까요?", options: ["자석의 세기가 더 강해진다", "자석의 성질이 사라진다", "전자석의 N극과 S극이 서로 바뀐다", "아무 변화도 일어나지 않는다"], answer: 2, explanation: "전자석에 흐르는 전류의 방향이 바뀌면 자기장의 방향도 바뀌어 N극과 S극의 위치가 서로 바뀌게 됩니다." },
+            { standard: "6-06-03", question: "다음 중 전자석이 이용되는 예로 거리가 먼 것은 무엇인가요?", options: ["무거운 쇠를 옮기는 기중기", "스피커", "자기 부상 열차", "나침반"], answer: 3, explanation: "기중기, 스피커, 자기 부상 열차, 자동문 등은 전자석의 원리를 이용합니다. 나침반은 지구의 자기장을 이용하는 영구 자석입니다." },
+            { standard: "6-06-03", question: "전자석을 만들 때, 에나멜선을 감는 철심으로 가장 적절한 것은 무엇일까요?", options: ["구리 못", "알루미늄 막대", "쇠못", "플라스틱 막대"], answer: 2, explanation: "쇠와 같이 자성이 쉽게 생기는 물질을 철심으로 사용해야 강한 전자석을 만들 수 있습니다. 구리나 알루미늄, 플라스틱은 적합하지 않습니다." },
+            
+            // [6과06-04] 전기의 안전하고 효율적인 이용 (4문제)
+            { standard: "6-06-04", question: "전기를 안전하게 사용하기 위한 방법으로 옳지 않은 것은 무엇인가요?", options: ["젖은 손으로 전기 기구를 만지지 않는다", "하나의 콘센트에 여러 플러그를 꽂는다", "전선이 벗겨진 곳은 절연 테이프로 감는다", "사용하지 않는 전기 기구의 플러그를 뽑는다"], answer: 1, explanation: "하나의 콘센트에 여러 플러그를 꽂으면 과부하로 인해 화재의 위험이 있습니다. 이를 '문어발식 사용'이라고 하며 매우 위험합니다." },
+            { standard: "6-06-04", question: "전기를 절약하는 방법으로 가장 효과적인 것은 무엇인가요?", options: ["TV 소리를 작게 듣는다", "사용하지 않는 방의 불을 끈다", "컴퓨터 화면을 어둡게 한다", "냉장고 문을 자주 여닫는다"], answer: 1, explanation: "사용하지 않는 공간의 조명을 끄는 것은 직접적으로 전력 소비를 줄이는 매우 효과적인 방법입니다. 대기전력을 줄이기 위해 플러그를 뽑는 것도 중요합니다." },
+            { standard: "6-06-04", question: "전기가 우리 생활에 주는 이점으로 가장 거리가 먼 것은 무엇인가요?", options: ["생활을 편리하게 해준다", "정보를 빠르게 얻게 해준다", "공기를 깨끗하게 정화시켜 준다", "밤에도 밝게 활동할 수 있게 해준다"], answer: 2, explanation: "전기는 조명, 통신, 가전제품 등을 통해 우리 생활을 편리하게 해주지만, 전기를 생산하는 과정(특히 화력발전)은 환경오염을 유발할 수 있습니다." },
+            { standard: "6-06-04", question: "에너지소비효율등급 라벨에서 1등급은 무엇을 의미하나요?", options: ["전기를 가장 많이 소비함", "전기 효율이 가장 높아 절약 효과가 큼", "제품 가격이 가장 비쌈", "제품 디자인이 가장 우수함"], answer: 1, explanation: "에너지소비효율등급은 1등급에 가까울수록 에너지 효율이 높아 같은 기능을 해도 전기를 적게 소비한다는 의미입니다. 1등급 제품을 사용하는 것이 전기 절약에 도움이 됩니다." }
+        ];
+
+        // --- 2. 게임 상태 관리 변수 ---
+        let shuffledQuestions = [];
+        let currentQuestionIndex = 0;
+        const achievements = {
+            '6-06-01': { name: "전기 회로의 이해", correct: 0, total: 4, badge: false },
+            '6-06-02': { name: "전지의 연결 방법", correct: 0, total: 5, badge: false },
+            '6-06-03': { name: "전자석의 원리와 이용", correct: 0, total: 5, badge: false },
+            '6-06-04': { name: "전기의 안전과 절약", correct: 0, total: 4, badge: false },
+        };
+
+        // --- 3. HTML 요소 가져오기 ---
+        const startScreen = document.getElementById('start-screen');
+        const gameScreen = document.getElementById('game-screen');
+        const resultsScreen = document.getElementById('results-screen');
+        const progressEl = document.getElementById('progress');
+        const standardEl = document.getElementById('achievement-standard');
+        const questionEl = document.getElementById('question');
+        const optionsContainer = document.getElementById('options-container');
+        const explanationEl = document.getElementById('explanation');
+        const nextBtn = document.getElementById('next-btn');
+
+        // --- 4. 게임 핵심 기능 함수 ---
+        
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        function startGame() {
+            currentQuestionIndex = 0;
+            for (const key in achievements) {
+                achievements[key].correct = 0;
+                achievements[key].badge = false;
+            }
+            shuffledQuestions = shuffleArray([...allQuestions]);
+            startScreen.classList.add('hidden');
+            gameScreen.classList.remove('hidden');
+            loadQuestion();
+        }
+        
+        function loadQuestion() {
+            explanationEl.textContent = "";
+            explanationEl.classList.add('hidden');
+            nextBtn.classList.add('hidden');
+
+            const questionData = shuffledQuestions[currentQuestionIndex];
+            const standardKey = questionData.standard;
+
+            progressEl.textContent = `문제 ${currentQuestionIndex + 1} / ${shuffledQuestions.length}`;
+            standardEl.textContent = `[${achievements[standardKey].name}]`;
+            questionEl.textContent = questionData.question;
+
+            optionsContainer.innerHTML = '';
+            questionData.options.forEach((option, index) => {
+                const button = document.createElement('button');
+                button.textContent = option;
+                button.classList.add('option-btn', 'w-full', 'bg-white', 'text-gray-700', 'font-semibold', 'py-3', 'px-4', 'rounded-lg', 'shadow-md', 'border', 'border-gray-200');
+                button.onclick = () => handleOptionClick(index);
+                optionsContainer.appendChild(button);
+            });
+        }
+
+        function handleOptionClick(selectedIndex) {
+            const questionData = shuffledQuestions[currentQuestionIndex];
+            const isCorrect = (selectedIndex === questionData.answer);
+            
+            Array.from(optionsContainer.children).forEach((btn, index) => {
+                btn.disabled = true;
+                if (index === questionData.answer) {
+                    btn.classList.add('correct');
+                } else if (index === selectedIndex) {
+                    btn.classList.add('incorrect');
+                }
+            });
+
+            if (isCorrect) {
+                achievements[questionData.standard].correct++;
+            }
+            
+            explanationEl.textContent = "해설: " + questionData.explanation;
+            explanationEl.classList.remove('hidden');
+            nextBtn.classList.remove('hidden');
+
+            if (currentQuestionIndex >= shuffledQuestions.length - 1) {
+                nextBtn.textContent = '결과 확인하기';
+            }
+        }
+        
+        function nextQuestion() {
+            currentQuestionIndex++;
+            if (currentQuestionIndex < shuffledQuestions.length) {
+                loadQuestion();
+            } else {
+                showResults();
+            }
+        }
+        
+        function showResults() {
+            gameScreen.classList.add('hidden');
+            resultsScreen.classList.remove('hidden');
+            
+            const achievementsContainer = document.getElementById('achievements-container');
+            achievementsContainer.innerHTML = '';
+            let totalCorrect = 0;
+            
+            for (const key in achievements) {
+                const achievement = achievements[key];
+                const percentage = (achievement.correct / achievement.total) * 100;
+                totalCorrect += achievement.correct;
+                
+                if (percentage >= 70) {
+                    achievement.badge = true;
+                }
+
+                const resultEl = document.createElement('div');
+                resultEl.className = 'p-4 bg-gray-100 rounded-lg text-left';
+
+                let extraInfoHTML = '';
+                if (achievement.badge) {
+                    const compliments = ["전기 박사님이네요!", "개념을 완벽히 이해했어요!", "정말 훌륭해요!"];
+                    const compliment = compliments[Math.floor(Math.random() * compliments.length)];
+                    extraInfoHTML = `<p class="text-sm text-green-600 mt-2 font-semibold">🌟 ${compliment}</p>`;
+                } else {
+                    extraInfoHTML = `<p class="text-sm text-indigo-700 mt-2">💡 <strong>학습 팁:</strong> ${tips[key]}</p>`;
+                }
+
+                resultEl.innerHTML = `
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <p class="font-bold text-gray-800">${achievement.name}</p>
+                            <p class="text-sm text-gray-600">달성도: ${achievement.correct} / ${achievement.total} (${percentage.toFixed(0)}%)</p>
+                        </div>
+                        <span class="achievement-badge ${achievement.badge ? 'badge-earned' : 'badge-not-earned'}">
+                            ${achievement.badge ? '🏅 달성' : '미달성'}
+                        </span>
+                    </div>
+                    ${extraInfoHTML}
+                `;
+                achievementsContainer.appendChild(resultEl);
+            }
+            
+            const totalPercentage = (totalCorrect / allQuestions.length) * 100;
+            const resultMessage = document.getElementById('result-message');
+            if (totalPercentage >= 80) {
+                resultMessage.textContent = "훌륭해요! 당신은 최고의 전기 탐험가입니다! 🏆";
+                resultMessage.className = "font-bold text-xl my-4 text-green-600";
+            } else {
+                resultMessage.textContent = "조금 아쉽네요! 다시 도전해서 모든 배지를 모아보세요!";
+                resultMessage.className = "font-bold text-xl my-4 text-orange-500";
+            }
+            
+            saveResultToSheet();
+        }
+        
+        async function saveResultToSheet() {
+            // 이 URL은 Google Apps Script로 웹 앱을 배포한 후 얻는 실제 URL로 교체해야 합니다.
+            const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw.../exec'; 
+            if (SCRIPT_URL.includes('...')) return; // URL이 설정되지 않았으면 실행하지 않음
+
+            const totalScore = Object.values(achievements).reduce((sum, ach) => sum + ach.correct, 0);
+            const totalProblems = allQuestions.length;
+            const dataToSend = {
+                // 학생 정보가 없으므로 익명으로 전송
+                name: "익명",
+                totalScore,
+                totalProblems,
+                score_01: `${achievements['6-06-01'].correct}/${achievements['6-06-01'].total}`,
+                badge_01: achievements['6-06-01'].badge ? 'O' : 'X',
+                score_02: `${achievements['6-06-02'].correct}/${achievements['6-06-02'].total}`,
+                badge_02: achievements['6-06-02'].badge ? 'O' : 'X',
+                score_03: `${achievements['6-06-03'].correct}/${achievements['6-06-03'].total}`,
+                badge_03: achievements['6-06-03'].badge ? 'O' : 'X',
+                score_04: `${achievements['6-06-04'].correct}/${achievements['6-06-04'].total}`,
+                badge_04: achievements['6-06-04'].badge ? 'O' : 'X',
+            };
+            
+            try {
+                // Google Sheets에 데이터를 보내는 실제 로직. CORS 정책 때문에 'no-cors' 모드를 사용할 수 있습니다.
+                // 성공 여부를 직접 알 수는 없지만, 데이터는 전송됩니다.
+                await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    mode: 'no-cors', 
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(dataToSend)
+                });
+            } catch (error) {
+                console.error("결과 저장 중 에러:", error);
+                // alert() 대신 콘솔에만 로그를 남겨 사용자 경험을 해치지 않도록 할 수 있습니다.
+            }
+        }
+
+        // --- 5. 교육적 보조 기능 함수 ---
+        const tips = {
+            "6-06-01": "전기가 흐르는 길(회로)이 끊어지지 않고 이어져야만 전구에 불이 켜진다는 '닫힌 회로' 개념을 기억하세요!",
+            "6-06-02": "직렬은 '파워 업!', 병렬은 '오래오래!'로 기억하세요. 직렬은 밝기가 세지고, 병렬은 사용 시간이 길어져요.",
+            "6-06-03": "전자석은 전기로 만드는 자석이에요. 전기가 흐를 때만 자석이 되고, 전기의 방향을 바꾸면 N/S극도 바꿀 수 있답니다.",
+            "6-06-04": "물은 전기가 잘 통해요. 그래서 젖은 손으로 전기 기구를 만지면 감전 위험이 커지니 항상 조심해야 해요!"
+        };
+        
+        function showTip() {
+            if (currentQuestionIndex >= shuffledQuestions.length) return;
+            const currentStandard = shuffledQuestions[currentQuestionIndex].standard;
+            document.getElementById('tip-content').textContent = tips[currentStandard];
+            const modal = document.getElementById('tip-modal');
+            modal.classList.remove('hidden');
+            setTimeout(() => modal.classList.remove('opacity-0', '-translate-y-4'), 10);
+        }
+
+        function closeTip() {
+            const modal = document.getElementById('tip-modal');
+            modal.classList.add('opacity-0', '-translate-y-4');
+            setTimeout(() => modal.classList.add('hidden'), 300);
+        }
+
+        function showElectricityInfo(topic) {
+            // alert()는 사용자 경험에 방해가 될 수 있으므로, 향후에는 모달창으로 개선하는 것을 권장합니다.
+            // 여기서는 원본 코드의 형식을 유지합니다.
+            const infos = {
+                circuit: "💡 전기 회로: 전지, 전선, 전구가 끊김 없이 연결되어 전기가 흐르는 길이에요.",
+                connection: "🔗 연결 방법: 직렬은 한 줄로, 병렬은 여러 줄로 연결하는 방식이에요. 집 전기 배선은 병렬연결!",
+                electromagnet: "🧲 전자석: 전기가 흐를 때만 자석이 되는 편리한 자석! 기중기, 스피커 등에 사용돼요.",
+                safety: "🔌 안전: 물기 조심! 문어발 사용 금지! 전기는 편리하지만 항상 안전하게 사용해야 해요."
+            };
+            
+            const message = infos[topic];
+            // alert 대신 커스텀 모달이나 다른 UI 요소로 대체하는 것이 좋습니다.
+            // 여기서는 일단 비활성화 합니다. 필요시 주석을 해제하세요.
+             alert(message);
+        }
+
+        // --- 6. 이벤트 리스너 연결 ---
+        document.getElementById('start-game-btn').addEventListener('click', startGame);
+        nextBtn.addEventListener('click', nextQuestion);
+        document.getElementById('restart-btn').addEventListener('click', () => {
+            resultsScreen.classList.add('hidden');
+            startScreen.classList.remove('hidden');
+            // '다음 문제' 버튼 텍스트 초기화
+            nextBtn.textContent = '다음 문제';
+        });
+
+    </script>
+</body>
+</html>
